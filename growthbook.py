@@ -25,7 +25,6 @@ from base64 import b64decode
 from time import time
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
-from urllib3 import PoolManager
 
 logger = logging.getLogger("growthbook")
 
@@ -604,7 +603,6 @@ class InMemoryFeatureCache(AbstractFeatureCache):
 class FeatureRepository(object):
     def __init__(self) -> None:
         self.cache: AbstractFeatureCache = InMemoryFeatureCache()
-        self.http: Optional[PoolManager] = None
 
     def set_cache(self, cache: AbstractFeatureCache) -> None:
         self.cache = cache
