@@ -5,6 +5,7 @@ feature flagging and A/B testing platform.
 More info at https://www.growthbook.io
 """
 
+import aiohttp
 import re
 import sys
 import json
@@ -612,14 +613,14 @@ class FeatureRepository(object):
         self.cache.clear()
 
     # Loads features with an in-memory cache in front
-    def load_features(
+    async def load_features(
         self, api_host: str, client_key: str, decryption_key: str = "", ttl: int = 60
     ) -> Optional[Dict]:
         key = api_host + "::" + client_key
 
         cached = self.cache.get(key)
         if not cached:
-            res = self._fetch_features(api_host, client_key, decryption_key)
+            res = await self._fetch_features(api_host, client_key, decryption_key)
             if res is not None:
                 self.cache.set(key, res, ttl)
                 logger.debug("Fetched features from API, stored in cache")
@@ -627,29 +628,30 @@ class FeatureRepository(object):
         return cached
 
     # Perform the GET request (separate method for easy mocking)
-    def _get(self, url: str):
-        self.http = self.http or PoolManager()
-        return self.http.request("GET", url)
+    async def _get(self, url: str):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                return resp
 
-    def _fetch_and_decode(self, api_host: str, client_key: str) -> Optional[Dict]:
+    async def _fetch_and_decode(self, api_host: str, client_key: str) -> Optional[Dict]:
         try:
-            r = self._get(self._get_features_url(api_host, client_key))
+            r = await self._get(self._get_features_url(api_host, client_key))
             if r.status >= 400:
                 logger.warning(
                     "Failed to fetch features, received status code %d", r.status
                 )
                 return None
-            decoded = json.loads(r.data.decode("utf-8"))
+            decoded = json.loads(r.text.decode("utf-8"))
             return decoded
         except Exception:
             logger.warning("Failed to decode feature JSON from GrowthBook API")
             return None
 
     # Fetch features from the GrowthBook API
-    def _fetch_features(
+    async def _fetch_features(
         self, api_host: str, client_key: str, decryption_key: str = ""
     ) -> Optional[Dict]:
-        decoded = self._fetch_and_decode(api_host, client_key)
+        decoded = await self._fetch_and_decode(api_host, client_key)
         if not decoded:
             return None
 
@@ -726,11 +728,11 @@ class GrowthBook(object):
         self._assigned: Dict[str, Any] = {}
         self._subscriptions: Set[Any] = set()
 
-    def load_features(self) -> None:
+    async def load_features(self) -> None:
         if not self._client_key:
             raise ValueError("Must specify `client_key` to refresh features")
 
-        features = feature_repo.load_features(
+        features = await feature_repo.load_features(
             self._api_host, self._client_key, self._decryption_key, self._cache_ttl
         )
         if features is not None:
