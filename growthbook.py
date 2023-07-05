@@ -629,17 +629,21 @@ class FeatureRepository(object):
     async def _get(self, url: str):
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
-                return resp
+                return {
+                    "status": resp.status,
+                    "headers": resp.headers,
+                    "body": await resp.text(encoding="utf-8"),
+                }
 
     async def _fetch_and_decode(self, api_host: str, client_key: str) -> Optional[Dict]:
         try:
             r = await self._get(self._get_features_url(api_host, client_key))
-            if r.status >= 400:
+            if r["status"] >= 400:
                 logger.warning(
-                    "Failed to fetch features, received status code %d", r.status
+                    "Failed to fetch features, received status code %d", r["status"]
                 )
                 return None
-            decoded = json.loads(r.text.decode("utf-8"))
+            decoded = json.loads(r["body"])
             return decoded
         except Exception:
             logger.warning("Failed to decode feature JSON from GrowthBook API")
@@ -665,6 +669,7 @@ class FeatureRepository(object):
                 )
                 return None
         elif "features" in decoded:
+            logger.warning("Fetched features from GrowthBook API")
             return decoded["features"]
         else:
             logger.warning("GrowthBook API response missing features")
