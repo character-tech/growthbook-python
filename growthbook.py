@@ -603,6 +603,12 @@ class InMemoryFeatureCache(AbstractFeatureCache):
 class FeatureRepository(object):
     def __init__(self) -> None:
         self.cache: AbstractFeatureCache = InMemoryFeatureCache()
+        # ClientSession can live for the lifetime of the application
+        self.http : Optional[aiohttp.ClientSession] = None
+
+    def __del__(self):
+        if self.http:
+            self.http.close()
 
     def set_cache(self, cache: AbstractFeatureCache) -> None:
         self.cache = cache
@@ -627,13 +633,13 @@ class FeatureRepository(object):
 
     # Perform the GET request (separate method for easy mocking)
     async def _get(self, url: str):
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                return {
-                    "status": resp.status,
-                    "headers": resp.headers,
-                    "body": await resp.text(encoding="utf-8"),
-                }
+        self.http = self.http or aiohttp.ClientSession()
+        async with self.http.get(url) as resp:
+            return {
+                "status": resp.status,
+                "headers": resp.headers,
+                "body": await resp.text(encoding="utf-8"),
+            }
 
     async def _fetch_and_decode(self, api_host: str, client_key: str) -> Optional[Dict]:
         try:
